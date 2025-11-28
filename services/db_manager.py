@@ -3,7 +3,6 @@ from config import DB_HOST, DB_USER, DB_PASSWORD, DB_NAME
 from utils.phone_utils import limpar_numero_telefone
 
 def get_db_connection():
-    """Cria e retorna uma nova conexão com o banco de dados (usando PyMySQL)."""
     try:
         conn = pymysql.connect(
             host=DB_HOST, user=DB_USER, password=DB_PASSWORD,
@@ -15,8 +14,7 @@ def get_db_connection():
         return None
 
 
-def logar_envio_inicial_db(
-        kommo_lead_id: int, kommo_contact_id: int, comprador_local_id: int, nome_contato: str,
+def logar_envio_inicial_db(kommo_lead_id: int, kommo_contact_id: int, comprador_local_id: int, nome_contato: str,
         telefones_encontrados: list, telefone_usado: str, mensagem_enviada: str
 ):
     """Salva o lead, os números e a primeira mensagem no banco de dados."""
@@ -70,13 +68,12 @@ def logar_envio_inicial_db(
 
 def buscar_contexto_conversa(numero_remetente_limpo: str):
     """
-    Busca contexto e AGORA TAMBÉM O STATUS do número.
+    Busca contexto e o STATUS do número.
     """
     print(f"[DB MANAGER] Buscando contexto para o número: {numero_remetente_limpo}")
     conn = None
     cursor = None
 
-    # Lógica do 9º dígito (mantida igual)
     termo_busca_1 = f"+{numero_remetente_limpo}"
     termo_busca_2 = None
     if numero_remetente_limpo.startswith('55') and len(numero_remetente_limpo) == 12:
@@ -109,7 +106,7 @@ def buscar_contexto_conversa(numero_remetente_limpo: str):
 
         lead_id = ids['lead_id']
         numero_id = ids['numero_id']
-        status_atual = ids['status_atual']  # Pega o status
+        status_atual = ids['status_atual']
 
         sql_find_history = "SELECT conteudo, remetente FROM mensagens WHERE numero_id = %s ORDER BY data_envio ASC;"
         cursor.execute(sql_find_history, (numero_id,))
@@ -118,7 +115,7 @@ def buscar_contexto_conversa(numero_remetente_limpo: str):
         return {
             "lead_id": lead_id,
             "numero_id": numero_id,
-            "status_atual": status_atual,  # Retorna o status
+            "status_atual": status_atual,
             "historico_chat": list(historico)
         }
 
@@ -298,7 +295,6 @@ def get_nome_responsavel_por_lead(lead_id: int):
         conn = get_db_connection()
         cursor = conn.cursor()
 
-        # Faz um JOIN entre leads e compradores para pegar o nome
         sql = """
         SELECT c.nome 
         FROM leads l
@@ -310,7 +306,7 @@ def get_nome_responsavel_por_lead(lead_id: int):
         resultado = cursor.fetchone()
 
         if resultado:
-            return resultado[0]  # Retorna o nome (ex: "Débora (Exemplo)")
+            return resultado[0]
 
     except Exception as e:
         print(f"[DB MANAGER] Erro ao buscar nome do responsável: {e}")
@@ -330,10 +326,8 @@ def get_template_mensagem_balanceado(tipo: str):
     cursor = None
     try:
         conn = get_db_connection()
-        # Usamos DictCursor para pegar o campo 'texto' pelo nome
         cursor = conn.cursor(pymysql.cursors.DictCursor)
 
-        # 1. Seleciona o menos usado
         sql_select = """
         SELECT id, texto 
         FROM templates_mensagem 
@@ -351,7 +345,6 @@ def get_template_mensagem_balanceado(tipo: str):
         template_id = resultado['id']
         texto_raw = resultado['texto']
 
-        # 2. Incrementa o uso
         sql_update = "UPDATE templates_mensagem SET contagem_uso = contagem_uso + 1 WHERE id = %s"
         cursor.execute(sql_update, (template_id,))
         conn.commit()
@@ -379,8 +372,6 @@ def buscar_proximo_lead_fila():
         conn = get_db_connection()
         cursor = conn.cursor(pymysql.cursors.DictCursor)
 
-        # Busca lead e número, MAS precisamos garantir que não pegue
-        # um que já estamos processando (embora o loop single-thread proteja isso).
         sql = """
         SELECT 
             l.kommo_lead_id,
@@ -421,7 +412,6 @@ def sincronizar_numeros_lead(kommo_lead_id: int, lista_numeros_api: list):
         conn = get_db_connection()
         cursor = conn.cursor()
 
-        # 1. Busca/Garante que o Lead existe
         sql_get_id = "SELECT id FROM leads WHERE kommo_lead_id = %s"
         cursor.execute(sql_get_id, (kommo_lead_id,))
         res = cursor.fetchone()
@@ -433,18 +423,14 @@ def sincronizar_numeros_lead(kommo_lead_id: int, lista_numeros_api: list):
             cursor.execute("INSERT INTO leads (kommo_lead_id, kommo_contact_id) VALUES (%s, 0)", (kommo_lead_id,))
             local_lead_id = cursor.lastrowid
 
-        # 2. Insere os números ignorando duplicados
         sql_insert_num = """
         INSERT IGNORE INTO contato_numeros (lead_id, numero, status)
         VALUES (%s, %s, 'sem envio')
         """
 
         for num_raw in lista_numeros_api:
-            # --- USO DO UTILITÁRIO DE LIMPEZA ---
             num_limpo = limpar_numero_telefone(num_raw)
-            # ------------------------------------
 
-            # Só insere se sobrou algum número válido
             if len(num_limpo) > 8:
                 cursor.execute(sql_insert_num, (local_lead_id, num_limpo))
 
@@ -484,8 +470,8 @@ def buscar_proximo_numero_sem_envio(kommo_lead_id: int):
         res = cursor.fetchone()
 
         if res:
-            return res[0]  # Retorna o número (ex: +5511999...)
-        return None  # Não tem mais números disponíveis
+            return res[0]
+        return None
 
     except Exception as e:
         print(f"[DB MANAGER] Erro ao buscar próximo número: {e}")
@@ -510,7 +496,7 @@ def get_kommo_id_from_local(local_lead_id: int):
         resultado = cursor.fetchone()
 
         if resultado:
-            return resultado[0]  # Retorna o ID do Kommo (ex: 21500005)
+            return resultado[0]
 
     except Exception as e:
         print(f"[DB MANAGER] Erro ao buscar Kommo ID: {e}")
@@ -532,9 +518,6 @@ def buscar_leads_para_finalizar_automaticamente():
         conn = get_db_connection()
         cursor = conn.cursor(pymysql.cursors.DictCursor)
 
-        # A Mágica do SQL:
-        # Agrupa por Lead e conta quantos números NÃO estão finalizados.
-        # Se a soma for 0, o lead está pronto para ser concluído.
         sql = """
         SELECT 
             l.id as lead_id,
@@ -594,7 +577,7 @@ def get_nome_lead_por_id(local_lead_id: int):
         resultado = cursor.fetchone()
 
         if resultado:
-            return resultado[0]  # Ex: "Tony"
+            return resultado[0]
 
     except Exception as e:
         print(f"[DB MANAGER] Erro ao buscar nome do lead: {e}")
@@ -633,6 +616,49 @@ def buscar_leads_expirados_24h():
     except Exception as e:
         print(f"[DB MANAGER] Erro ao buscar leads expirados: {e}")
         return []
+    finally:
+        if cursor: cursor.close()
+        if conn: conn.close()
+
+
+def resetar_banco_para_testes():
+    """
+    LIMPA TODAS AS TABELAS DE DADOS (LEADS, NÚMEROS, MENSAGENS).
+    USADO APENAS PARA TESTES/RESET.
+    """
+    print("\n[DB MANAGER] ⚠️ INICIANDO RESET COMPLETO DAS TABELAS... ⚠️")
+    conn = None
+    cursor = None
+    try:
+        conn = get_db_connection()
+        cursor = conn.cursor()
+
+        # Desativa chaves estrangeiras para permitir truncar/deletar em qualquer ordem
+        cursor.execute("SET FOREIGN_KEY_CHECKS = 0;")
+        cursor.execute("SET SQL_SAFE_UPDATES = 0;")  # Conforme solicitado
+
+        # Limpa as tabelas (Ordem ideal: Filho -> Pai, mas com check=0 tanto faz)
+        print("[DB MANAGER] Deletando Mensagens...")
+        cursor.execute("DELETE FROM mensagens;")
+
+        print("[DB MANAGER] Deletando Números...")
+        cursor.execute("DELETE FROM contato_numeros;")
+
+        print("[DB MANAGER] Deletando Leads...")
+        cursor.execute("DELETE FROM leads;")
+
+        # Restaura configurações de segurança
+        cursor.execute("SET SQL_SAFE_UPDATES = 1;")
+        cursor.execute("SET FOREIGN_KEY_CHECKS = 1;")
+
+        conn.commit()
+        print("[DB MANAGER] ✅ RESET CONCLUÍDO! O BANCO ESTÁ LIMPO.\n")
+        return True
+
+    except Exception as e:
+        print(f"[DB MANAGER] ❌ ERRO AO RESETAR BANCO: {e}")
+        if conn: conn.rollback()
+        return False
     finally:
         if cursor: cursor.close()
         if conn: conn.close()

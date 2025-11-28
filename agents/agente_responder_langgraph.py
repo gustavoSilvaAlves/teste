@@ -1,7 +1,3 @@
-import sys
-from pathlib import Path
-ROOT_DIR = Path(__file__).resolve().parent.parent
-sys.path.append(str(ROOT_DIR))
 import json
 from typing import TypedDict, Literal
 from langchain_openai import ChatOpenAI
@@ -28,7 +24,7 @@ from utils.message_manager import (
     selecionar_mensagem_engano,
     get_texto_apresentacao,
     get_mensagem_parente,
-    get_pdf_em_base64 #
+    get_pdf_em_base64
 )
 
 
@@ -73,9 +69,7 @@ classification_prompt = ChatPromptTemplate.from_messages([
 classifier_chain = classification_prompt | structured_llm
 
 
-
 def formatar_historico_para_nota(historico_chat: list, ultima_mensagem_usuario: str) -> str:
-    """Transforma a lista de mensagens em um texto legível para a nota."""
     texto = (
         "\n"
         "════ HISTÓRICO DA CONVERSA ════ \n"
@@ -84,7 +78,6 @@ def formatar_historico_para_nota(historico_chat: list, ultima_mensagem_usuario: 
 
     if historico_chat:
         for msg in historico_chat:
-            # Diferencia visualmente Agente e Cliente
             if msg['remetente'] == 'agente':
                 texto += f"BOT: {msg['conteudo']}\n"
             else:
@@ -93,7 +86,6 @@ def formatar_historico_para_nota(historico_chat: list, ultima_mensagem_usuario: 
             texto += "─" * 30 + "\n"
     texto += f"CLIENTE: {ultima_mensagem_usuario}\n"
 
-    # Rodapé
     texto += "\n═══════════════════════════════"
 
     return texto
@@ -109,60 +101,43 @@ def classificar_entrada(state: GraphState):
     historico_formatado = []
     msg_usuario_atual = state['mensagem_recebida'].strip()
 
-    # 1. Pega o histórico do banco (que já está no 'state')
-    # O histórico vem do banco como uma lista de dicionários
     if state['historico_chat']:
         for msg in state['historico_chat']:
             conteudo_msg = msg['conteudo'].strip()
             remetente = msg['remetente']
 
-            # Se a mensagem do histórico (ex: "Olá") faz parte da mensagem atual (ex: "Olá\nBoa noite")
-            # E for do usuário, ignoramos ela no histórico para não duplicar.
             if remetente == 'usuario' and conteudo_msg in msg_usuario_atual and len(conteudo_msg) > 0:
                 continue
 
             prefixo = "AI: " if remetente == 'agente' else "Cliente: "
             historico_formatado.append(f"{prefixo}{msg['conteudo']}")
 
-        # --- 2. ADICIONA A MENSAGEM ATUAL (COM QUEBRA DE LINHA) ---
-        # Se a mensagem veio com \n (do debounce), separamos para ficar visualmente claro
     linhas_atuais = msg_usuario_atual.split('\n')
     for linha in linhas_atuais:
-        if linha.strip():  # Ignora linhas vazias
+        if linha.strip():
             historico_formatado.append(f"Cliente: {linha.strip()}")
-    # ----------------------------------------------------------
 
     historico_str = "\n".join(historico_formatado)
 
-    # --- DEBUG PRINT (Para você ver o que a IA está lendo) ---
-    print("\n" + "=" * 50)
     print("--- [DEBUG] PROMPT ENVIADO PARA A LLM (CLASSIFICADOR) ---")
     print(f"Histórico Formatado (enviado para LLM):\n{historico_str}")
-    print("=" * 50 + "\n")
-    # ---------------------------------------------------------
 
-    print("\n" + "🕵️ " * 10 + " DEBUG: PROMPT COMPLETO (RAIO-X) " + "🕵️ " * 10)
+    print("\n------------ DEBUG: PROMPT COMPLETO (RAIO-X) ------------ ")
 
     try:
-        # O método format_messages simula o envio, preenchendo as variáveis
         mensagens_renderizadas = classification_prompt.format_messages(
             historico_formatado=historico_str
         )
 
         for i, m in enumerate(mensagens_renderizadas):
-            role = m.type.upper()  # SYSTEM ou HUMAN
-            print(f"\n--- 📨 MENSAGEM {i + 1}: {role} ---")
+            role = m.type.upper()
+            print(f"\n--- MENSAGEM {i + 1}: {role} ---")
             print(m.content)
-            print("-" * 40)
 
     except Exception as e_debug:
         print(f"Erro ao imprimir debug: {e_debug}")
 
-    print("=" * 60 + "\n")
-
-    # Chama a LLM
     try:
-        # Chama a chain passando a variável que definimos no human_prompt ({historico_formatado})
         resultado = classifier_chain.invoke({
             "historico_formatado": historico_str
         })
@@ -175,20 +150,12 @@ def classificar_entrada(state: GraphState):
 
         classificacao = "nao_identificado"
 
-    # Retorna a atualização para o estado do grafo
     return {"classificacao": classificacao}
 
 
-
-
-
-
-
 def tool_confirmacao(state: GraphState):
-    print(f"\n[TOOL - CONFIRMAÇÃO] 🚀")
+    print(f"\n[TOOL - CONFIRMAÇÃO]")
     print("O usuário confirmou. Atualizando status para 'confirmado' e encerrando.")
-
-    # Apenas atualiza o status no banco de dados
     atualizar_status_contato(state['numero_id'], 'confirmado')
 
     kommo_id = get_kommo_id_from_local(state['lead_id'])
@@ -220,11 +187,8 @@ def tool_objecao(state: GraphState):
     lead_id = state['lead_id']
 
     nome_responsavel = get_nome_responsavel_por_lead(lead_id)
-    # 1. Prepara o conteúdo
     texto = get_texto_apresentacao(nome_responsavel)
     pdf_base64 = get_pdf_em_base64()
-
-    # 2. Envia (Tenta PDF, se falhar vai texto)
     resultado_envio = None
 
     if pdf_base64:
@@ -236,12 +200,10 @@ def tool_objecao(state: GraphState):
             caption=texto
         )
 
-    # Fallback ou Envio direto de texto
     if not resultado_envio:
         if pdf_base64: print("[AGENTE RESPONDER] Falha no PDF. Tentando texto puro...")
         resultado_envio = enviar_mensagem_evolution(numero_remetente, texto, instance_id)
 
-    # 3. Log e Status
     if resultado_envio:
         salvar_mensagem_agente(numero_id, texto)
         atualizar_status_contato(numero_id, 'objeção')
@@ -266,40 +228,27 @@ def tool_objecao(state: GraphState):
 
 def tool_negacao(state: GraphState):
     print("\n[TOOL - NEGAÇÃO]")
-
-    # 1. Extração de Dados
     numero_id = state['numero_id']
     numero_remetente = state['numero_remetente']
     instance_id = state['instance_id']
     lead_id = state['lead_id']
 
-    # Nome que está no perfil do WhatsApp (pode vir vazio)
     nome_wpp = state.get('nome_perfil_whatsapp', '')
 
-    # 2. Busca o nome real do Lead no Banco de Dados
     nome_lead_banco = get_nome_lead_por_id(lead_id)
 
-    # 3. Verifica "Engano Fake" via LLM
-    # (Compara "Gustavo" do WPP com "Gustavo Silva" do Banco)
     eh_engano_fake = False
     if nome_wpp and nome_lead_banco:
         eh_engano_fake = verificar_match_nome_llm(nome_lead_banco, nome_wpp)
 
     history_log = formatar_historico_para_nota(state['historico_chat'], state['mensagem_recebida'])
-
-    # Recupera o ID do Kommo para atualizações
     kommo_id = get_kommo_id_from_local(lead_id)
 
-    # --- CENÁRIO A: ENGANO FAKE (Mentira detectada) ---
     if eh_engano_fake:
         print(f"DETECTADO: ENGANO FAKE! Lead='{nome_lead_banco}' vs Wpp='{nome_wpp}'")
 
-        # Ação 1: NÃO responde (Silêncio estratégico)
-
-        # Ação 2: Marca status específico no banco
         atualizar_status_contato(numero_id, 'engano_fake')
 
-        # Ação 3: Atualiza Kommo (Move e Cria Nota de Alerta)
         if kommo_id:
 
             texto_nota = (
@@ -312,17 +261,13 @@ def tool_negacao(state: GraphState):
             criar_nota_lead_kommo(kommo_id, texto_nota)
     else:
         print("Negação legítima (Nomes não batem ou sem nome no Wpp). Enviando desculpas.")
-
-        # Ação 1: Envia mensagem de desculpas
         msg = selecionar_mensagem_engano()
         res = enviar_mensagem_evolution(numero_remetente, msg, instance_id)
 
         if res:
-            # Ação 2: Salva e marca como 'negado'
             salvar_mensagem_agente(numero_id, msg)
             atualizar_status_contato(numero_id, 'negado')
 
-            # Ação 3: Atualiza Kommo (Move e Cria Nota Informativa)
             if kommo_id:
                 texto_nota = (
                     f"IDENTIFICAÇÃO DE ENGANO (NÚMERO ERRADO)\n"
@@ -394,10 +339,9 @@ def tool_parente(state: GraphState):
 
 
 def tool_neutra(state: GraphState):
-    print("\n[TOOL - NEUTRA] 😶")
+    print("\n[TOOL - NEUTRA]")
     print("Mensagem fática/saudação. Nenhuma ação tomada. Mantendo 'em tratativa'.")
 
-    # Garante que o status fique 'em tratativa' para que o bot continue ouvindo
     atualizar_status_contato(state['numero_id'], 'em tratativa')
 
     return {}
@@ -468,10 +412,10 @@ def iniciar_agente_resposta(input_data: dict):
     try:
         input_data['classificacao'] = None
 
-        print("\n" + "🟢 " * 10 + " INPUT DO AGENTE " + "🟢 " * 10)
+        print("\n------------ INPUT DO AGENTE ------------")
         print(json.dumps(input_data, indent=2, default=str))
 
-        print("\n" + "🏁 " * 10 + " OUTPUT DO AGENTE " + "🏁 " * 10)
+        print("\n------------ OUTPUT DO AGENTE ------------")
         print(json.dumps(app.invoke(input_data), indent=2, default=str))
     except Exception as e:
         print(f"[AGENTE RESPONDER] Erro: {e}")

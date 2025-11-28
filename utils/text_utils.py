@@ -1,9 +1,3 @@
-import sys
-from pathlib import Path
-
-ROOT_DIR = Path(__file__).resolve().parent.parent
-sys.path.append(str(ROOT_DIR))
-
 from langchain_openai import ChatOpenAI
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
@@ -48,7 +42,6 @@ def verificar_match_nome_llm(nome_lead: str, nome_whatsapp: str) -> bool:
     )
 
     try:
-        # Temperatura 0 para ser determinístico e analítico
         llm = ChatOpenAI(model="gpt-4o-mini", temperature=0.0)
 
         prompt = ChatPromptTemplate.from_messages([
@@ -70,5 +63,4 @@ def verificar_match_nome_llm(nome_lead: str, nome_whatsapp: str) -> bool:
 
     except Exception as e:
         print(f"[TEXT UTILS] Erro na validação LLM: {e}")
-        # Em caso de erro na API, assumimos FALSE para não acusar um falso positivo de "Engano Fake"
         return False

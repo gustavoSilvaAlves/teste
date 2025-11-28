@@ -1,4 +1,3 @@
-import random
 import datetime
 import pytz
 from langchain_openai import ChatOpenAI
@@ -11,7 +10,6 @@ from services.db_manager import get_template_mensagem_balanceado
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CAMINHO_PDF = os.path.join(BASE_DIR, "RecebendoPrecatorioLogo.pdf")
 
-
 def get_pdf_em_base64():
     """Lê o arquivo PDF local e retorna a string Base64 limpa."""
     if not os.path.exists(CAMINHO_PDF):
@@ -20,7 +18,6 @@ def get_pdf_em_base64():
 
     try:
         with open(CAMINHO_PDF, "rb") as pdf_file:
-            # Lê, codifica e LIMPA quebras de linha
             encoded_bytes = base64.b64encode(pdf_file.read())
             encoded_string = encoded_bytes.decode('utf-8').replace('\n', '').replace('\r', '')
             return encoded_string
@@ -30,7 +27,7 @@ def get_pdf_em_base64():
 
 
 def get_saudacao():
-    """Retorna Bom dia ou Boa tarde baseado no horário de Brasília."""
+
     tz = pytz.timezone('America/Sao_Paulo')
     hora = datetime.datetime.now(tz).hour
     if 5 <= hora < 12:
@@ -50,23 +47,19 @@ def detectar_genero(nome: str) -> str:
         ) | llm | StrOutputParser()
 
         genero = chain.invoke({"nome": nome}).strip().upper()
-        return genero if genero in ['M', 'F'] else 'M'  # Default M
+        return genero if genero in ['M', 'F'] else 'M'
     except:
         return 'M'
-
-
-# --- TEMPLATES ---
 
 def selecionar_primeira_mensagem(primeiro_nome: str):
     """Busca template no DB e preenche saudação e nome."""
     texto_raw = get_template_mensagem_balanceado('primeira_mensagem')
 
     if not texto_raw:
-        return f"Olá, {primeiro_nome}. Tudo bem?"  # Fallback extremo
+        return f"Olá, {primeiro_nome}. Tudo bem?"
 
     saudacao = get_saudacao()
 
-    # Preenche os placeholders {saudacao}, {saudacao_lower}, {nome_cliente}
     return texto_raw.format(
         saudacao=saudacao,
         saudacao_lower=saudacao.lower(),
@@ -75,13 +68,13 @@ def selecionar_primeira_mensagem(primeiro_nome: str):
 
 
 def selecionar_mensagem_engano():
-    """Busca template de engano no DB."""
     texto_raw = get_template_mensagem_balanceado('engano')
     return texto_raw or "Desculpe o engano."
 
 
 def get_mensagem_parente(nome_responsavel: str, nome_lead: str):
-    """Busca template de parente e preenche pronomes de acordo com gênero."""
+    """Busca template de parente e preenche de acordo com gênero."""
+
     texto_raw = get_template_mensagem_balanceado('parente')
     if not texto_raw: return "Poderia encaminhar para ele?"
 

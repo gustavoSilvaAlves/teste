@@ -1,8 +1,6 @@
+from dotenv import load_dotenv
+load_dotenv()
 from agents import agente_iniciador
-import sys
-from pathlib import Path
-ROOT_DIR = Path(__file__).resolve().parent
-sys.path.append(str(ROOT_DIR))
 
 params_kommo = {
     "service": "chatbot",
